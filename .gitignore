@@ -48,3 +48,4 @@ build/
 
 **/.yml
 **/.yaml
+/redis_distributed_lock2/src/main/resources/application.properties
