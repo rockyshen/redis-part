@@ -33,7 +33,7 @@ public class InventoryService
          */
         // 1.用自旋替代递归；2.用while替代if
         //
-        while(!stringRedisTemplate.opsForValue().setIfAbsent(key, uuidValue)) {
+        while(!stringRedisTemplate.opsForValue().setIfAbsent(key, uuidValue, 30L, TimeUnit.SECONDS)) {
             try {
                 TimeUnit.MILLISECONDS.sleep(20);
             }catch (InterruptedException e) {
