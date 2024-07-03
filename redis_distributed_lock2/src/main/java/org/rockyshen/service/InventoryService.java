@@ -55,8 +55,10 @@ public class InventoryService
                 retMessage = "商品卖完了，o(╥﹏╥)o";
             }
         }finally {
-            // 释放锁
-            stringRedisTemplate.delete(key);
+            // 释放锁，必须检查是自己的锁，只能删自己的
+            if(stringRedisTemplate.opsForValue().get(key).equalsIgnoreCase(uuidValue)){
+                stringRedisTemplate.delete(key);
+            }
         }
 
         return retMessage+"\t"+"服务端口号："+port;
