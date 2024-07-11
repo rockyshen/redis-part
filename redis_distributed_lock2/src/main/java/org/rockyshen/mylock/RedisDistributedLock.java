@@ -12,8 +12,9 @@ import java.util.concurrent.locks.Lock;
 /**
  * V7，基于HSET实现自研redis分布式锁
  */
-public class RedisDistributedLock implements Lock {
 
+//@Component  不需要加入容器，因为由工厂提供，工厂类在容器中即可！
+public class RedisDistributedLock implements Lock {
     private StringRedisTemplate stringRedisTemplate;
 
     private String lockName;  //KEY[1]
@@ -22,10 +23,18 @@ public class RedisDistributedLock implements Lock {
 
     private long expireTime;  //ARGV[2]
 
-    public RedisDistributedLock(StringRedisTemplate stringRedisTemplate, String lockName) {
+
+//    public RedisDistributedLock(StringRedisTemplate stringRedisTemplate, String lockName) {
+//        this.stringRedisTemplate = stringRedisTemplate;
+//        this.lockName = lockName;
+//        this.uuidValue = IdUtil.simpleUUID()+":"+Thread.currentThread().getId();
+//        this.expireTime = 50L;
+//    }
+
+    public RedisDistributedLock(StringRedisTemplate stringRedisTemplate, String lockName, String uuid) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.lockName = lockName;
-        this.uuidValue = IdUtil.simpleUUID()+":"+Thread.currentThread().getId();
+        this.uuidValue = uuid +":"+Thread.currentThread().getId();
         this.expireTime = 50L;
     }
 
@@ -44,32 +53,38 @@ public class RedisDistributedLock implements Lock {
         return false;
     }
 
+    /**
+     * 实际干活的，lock和tryLock()复用，全盘通用
+     * @param time the maximum time to wait for the lock
+     * @param unit the time unit of the {@code time} argument
+     * @return
+     * @throws InterruptedException
+     */
     @Override
     public boolean tryLock(long time, TimeUnit unit) throws InterruptedException {
         if(time == -1L){
-            String luaScript = "if redis.call('exists', KEYS[1]) == 0 or redis.call('hexists',KEYS[1],ARGV[1]) == 1 then"+
-                                "redis.call('hincrby', KEYS[1],ARGV[1],1) redis.call('expire', KEYS[1],ARGV[2]) return 1"+
-                                "else return 0; end";
-            while(!stringRedisTemplate.execute(new DefaultRedisScript<>(luaScript,Boolean.class), Arrays.asList(lockName),uuidValue,String.valueOf(expireTime))){
+            String luaScript = "if redis.call('exists',KEYS[1]) == 0 or redis.call('hexists',KEYS[1],ARGV[1]) == 1 then redis.call('hincrby',KEYS[1],ARGV[1],1) redis.call('expire',KEYS[1],ARGV[2]) return 1 else return 0 end";
+            System.out.println("lockName:"+lockName+"\t"+"uuidValue:"+uuidValue);
+
+            while(!stringRedisTemplate.execute(new DefaultRedisScript<>(luaScript, Boolean.class), Arrays.asList(lockName), uuidValue, String.valueOf(expireTime))){
                 // 60毫秒后重试
                 TimeUnit.MILLISECONDS.sleep(60);
             }
             return true;
         }
+        //几乎走不到这里
         return false;
     }
+
     @Override
     public void unlock() {
-        String luaScript = "if redis.call('hexists',KEY[1],ARGV[1]) == 0 then" +
-                "return nil" +
-                "elseif redis.call('hincrby',KEY[1],ARGV[1],-1) == 0 then" +
-                "return redis.call('del',KEY[1])" +
-                "else" +
-                "return 0" +
-                "end";
+        // 测试可重入性，解锁时的状态
+        System.out.println("unlock(): lockName:"+ lockName+"\t"+"uuidValue:"+uuidValue);
+
+        String luaScript = "if redis.call('HEXISTS',KEYS[1],ARGV[1]) == 0 then return nil elseif redis.call('HINCRBY',KEYS[1],ARGV[1],-1) == 0 then return redis.call('del',KEYS[1]) else return 0 end";
         //nil=false  1=true  0=false
         Long flag = stringRedisTemplate.execute(new DefaultRedisScript<>(luaScript,Long.class), Arrays.asList(lockName),uuidValue,String.valueOf(expireTime));
-        if(null == flag){
+        if(flag == null){
             throw new RuntimeException("This lock does not exists");
         }
     }
