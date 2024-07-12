@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -43,8 +44,15 @@ public class InventoryService {
                 stringRedisTemplate.opsForValue().set("inventory001",String.valueOf(--inventoryNumber));
                 retMessage = "成功卖出一个商品，库存剩余: "+inventoryNumber;
                 System.out.println(retMessage);
+                // 模拟业务暂停120秒
+                try {
+                    TimeUnit.SECONDS.sleep(120);
+                }catch(InterruptedException e){
+                    e.printStackTrace();
+                }
+
                 //测试redis分布式锁的可重入性
-                testReEntry();
+//                testReEntry();
             }else{
                 retMessage = "商品卖完了，o(╥﹏╥)o";
             }
@@ -55,14 +63,14 @@ public class InventoryService {
     }
 
     // 测试可重入锁，是否成功！
-    private void testReEntry() {
-        Lock redisDistributedLock = distributedLockFactory.getDistributedLock("redis");
-        //有Bug,同一个线程，两次生产lock，UUID随机数不同了，错误！应该同一个线程的UUID始终相同
-        redisDistributedLock.lock();
-        try {
-            System.out.println("========可重入锁测试===========");
-        }finally {
-            redisDistributedLock.unlock();
-        }
-    }
+//    private void testReEntry() {
+//        Lock redisDistributedLock = distributedLockFactory.getDistributedLock("redis");
+//        //有Bug,同一个线程，两次生产lock，UUID随机数不同了，错误！应该同一个线程的UUID始终相同
+//        redisDistributedLock.lock();
+//        try {
+//            System.out.println("========可重入锁测试===========");
+//        }finally {
+//            redisDistributedLock.unlock();
+//        }
+//    }
 }

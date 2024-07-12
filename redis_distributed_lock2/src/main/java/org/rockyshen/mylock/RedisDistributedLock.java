@@ -5,6 +5,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import java.util.Arrays;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -70,6 +72,8 @@ public class RedisDistributedLock implements Lock {
                 // 60毫秒后重试
                 TimeUnit.MILLISECONDS.sleep(60);
             }
+            // 一旦枷锁成成，就开启重试机制，业务逻辑超过分布式锁过期时间，自动续期
+            renewExpire();
             return true;
         }
         //几乎走不到这里
@@ -87,6 +91,22 @@ public class RedisDistributedLock implements Lock {
         if(flag == null){
             throw new RuntimeException("This lock does not exists");
         }
+    }
+
+    private void renewExpire() {
+        /**
+         * 这段lua脚本的意思是：如果redis分布式锁的键孩子啊，就给它续期，返回true
+         * 如果不存在了，证明这个锁已经释放了，返回false
+         */
+        String luaScript = "if redis.call('HEXISTS',KEYS[1],ARGV[1]) == 1 then return redis.call('EXPIRE',KEYS[1],ARGV[2]) else return 0 end";
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                if(stringRedisTemplate.execute(new DefaultRedisScript<>(luaScript,Boolean.class),Arrays.asList(lockName),uuidValue,String.valueOf(expireTime))){
+                    renewExpire();
+                }
+            }
+        },(this.expireTime * 1000)/5);   //每隔10秒，触发一次定时任务
     }
 
     //  下面两个暂时用不到，不再重写
